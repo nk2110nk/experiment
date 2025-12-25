@@ -10,6 +10,8 @@ from .observer import *
 from sao.my_sao import MySAOMechanism
 from sao.my_negotiators import *
 
+import sys
+
 PENALTY = -1.
 
 
@@ -26,19 +28,23 @@ class NaiveEnv(gym.Env):
         self.issues = scenario.issues
         self.util1 = scenario.ufuns[0].scale_max(1.0)
         self.util2 = scenario.ufuns[1].scale_max(1.0)
+        self.util3 = scenario.ufuns[2].scale_max(1.0) # 変更箇所
 
         self.my_agent: Optional[RLNegotiator] = None
         self.session: Optional[MySAOMechanism] = None
 
+        # この部分の処理をなんとか考えること
         # 設定読み込み
         self.is_first = is_first
         self.is_first_turn = is_first
         if self.is_first:
             self.my_util = self.util1
-            self.opp_util = self.util2
+            self.opp_util1 = self.util2 # 変更箇所
+            self.opp_util2 = self.util3 # 変更箇所
         else:
-            self.opp_util = self.util1
+            self.opp_util1 = self.util1 # 変更箇所
             self.my_util = self.util2
+            self.opp_util2 = self.util3 # 変更箇所
 
         # 強化学習関連
         self.state = None
@@ -51,7 +57,7 @@ class NaiveEnv(gym.Env):
         self.action_space = gym.spaces.Discrete(len(self.all_bids))
         self.reward_range = [PENALTY, 1.0]
         self.seed()
-        self.reset(options={"opponent":"Boulware"})
+        self.reset(options={"opponent":["Boulware", "Conceder"]}) # 変更箇所
 
     def reset(self, seed=None, options=None):
         self.opponent = options["opponent"]
@@ -63,15 +69,24 @@ class NaiveEnv(gym.Env):
         #self.session.__init__(issues=self.issues, n_steps=80, avoid_ultimatum=False)
         self.session = MySAOMechanism(issues=self.issues, n_steps=80, avoid_ultimatum=False)
         self.my_agent = RLNegotiator()
-        opponent = self.get_opponent(add_noise=True)
+        
+        opponent = []
+        # 変更箇所
+        num_opponent_negotiator = len(self.opponent)
+        for i in range(num_opponent_negotiator):
+            self.agent_number = i
+            opponent.append(self.get_opponent(add_noise=True))
 
         # セッションにエージェントの追加
         if self.is_first_turn:
             self.session.add(self.my_agent, ufun=self.my_util)
-            self.session.add(opponent, ufun=self.opp_util)
+            self.session.add(opponent[0], ufun=self.opp_util1) # 変更箇所
+            self.session.add(opponent[1], ufun=self.opp_util2) # 変更箇所
+            # 先行だったら自分から提案
             self.state = None
         else:
-            self.session.add(opponent, ufun=self.opp_util)
+            self.session.add(opponent[0], ufun=self.opp_util1) # 変更箇所
+            self.session.add(opponent[1], ufun=self.opp_util2) # 変更箇所
             self.session.add(self.my_agent, ufun=self.my_util)
             # 後攻だったら相手に1回提案させる
             self.state = self.session.step().asdict()
@@ -97,25 +112,28 @@ class NaiveEnv(gym.Env):
         if not self.state['running']:
             self.session.plot()
         return outfile
-
+    
+    # 変更箇所
     def get_opponent(self, add_noise=False):
-        if self.opponent == 'Boulware':
-            opponent = TimeBasedNegotiator(name='Boulware', aspiration_type=4.0, add_noise=add_noise)
-        elif self.opponent == 'Linear':
-            opponent = TimeBasedNegotiator(name='Linear', aspiration_type=1.0, add_noise=add_noise)
-        elif self.opponent == 'Conceder':
-            opponent = TimeBasedNegotiator(name='Conceder', aspiration_type=0.2, add_noise=add_noise)
-        elif self.opponent == 'TitForTat1':
+        if self.opponent[self.agent_number] == 'Boulware':
+            opponent = TimeBasedNegotiator(name = 'Boulware{}'.format(self.agent_number), aspiration_type=10.0, add_noise=add_noise)
+        elif self.opponent[self.agent_number] == 'Linear':
+            opponent = TimeBasedNegotiator(name='Linear{}'.format(self.agent_number), aspiration_type=1.0, add_noise=add_noise)
+        elif self.opponent[self.agent_number] == 'Conceder':
+            opponent = TimeBasedNegotiator(name='Conceder{}'.format(self.agent_number), aspiration_type=0.2, add_noise=add_noise)
+        elif self.opponent[self.agent_number] == 'TitForTat1':
             opponent = AverageTitForTatNegotiator(name='TitForTat1', gamma=1, add_noise=add_noise)
-        elif self.opponent == 'TitForTat2':
+        elif self.opponent[self.agent_number] == 'TitForTat2':
             opponent = AverageTitForTatNegotiator(name='TitForTat2', gamma=2, add_noise=add_noise)
-        elif self.opponent == 'AgentK':
+        elif self.opponent[self.agent_number] == 'AgentK':
             opponent = AgentK(add_noise=add_noise)
-        elif self.opponent == 'HardHeaded':
+        elif self.opponent[self.agent_number] == 'HardHeaded':
             opponent = HardHeaded(add_noise=add_noise)
-        elif self.opponent == 'Atlas3':
+        elif self.opponent[self.agent_number] == 'CUHKAgent':
+            opponent = CUHKAgent(add_noise=add_noise)
+        elif self.opponent[self.agent_number] == 'Atlas3':
             opponent = Atlas3(add_noise=add_noise)
-        elif self.opponent == 'AgentGG':
+        elif self.opponent[self.agent_number] == 'AgentGG':
             opponent = AgentGG(add_noise=add_noise)
         else:
             opponent = TimeBasedNegotiator(name='Linear', aspiration_type=1.0, add_noise=add_noise)
@@ -179,3 +197,10 @@ class AOPEnv(NaiveEnv):
                 return self.observation, self.get_reward(), True, False, {"state":[]}
         return self.observation, self.get_reward(), False, False, {"state":[]}
 
+
+
+# コメント
+# 3者に区別するため、self内部にはagent_numberを入れる(3者間の場合は0か1)
+# run_session_trained関数内で、対戦相手を順番に取得し、sessionに追加する際に順番を調整する
+# agreement時の効用計算も順番を調整する
+# 効用関数が対応しているかどうかしっかりと確認すること
