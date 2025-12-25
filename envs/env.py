@@ -172,7 +172,7 @@ class NaiveEnv(gym.Env):
         return agent.all_bids
 
 
-class AOPEnv(NaiveEnv):
+class AOPEnv(NaiveEnv): # ここのクラスは学習時に使用
     def __init__(self, domain='party', is_first=False, observer=None, test=False, render_mode=None, scale='small'):
         super().__init__(domain, is_first, test, scale)
         self.action_space = gym.spaces.Discrete(len(self.all_bids))
