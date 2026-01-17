@@ -172,11 +172,11 @@ class NaiveEnv(gym.Env):
         return agent.all_bids
 
 
-class AOPEnv(NaiveEnv): # ここのクラスは学習時に使用
+class AOPEnv(NaiveEnv): 
     def __init__(self, domain='party', is_first=False, observer=None, test=False, render_mode=None, scale='small'):
         super().__init__(domain, is_first, test, scale)
         self.action_space = gym.spaces.Discrete(len(self.all_bids))
-
+    # ここのクラスは学習時に使用
     def step(self, action: int):
         # インデックス0はAcceptに対応
         idx = action[0]
@@ -186,13 +186,13 @@ class AOPEnv(NaiveEnv): # ここのクラスは学習時に使用
         # インデックスからbidに変換
         self.action = {i.name: v for i, v in zip(self.issues, self.action)}
         self.my_agent.set_next_bid(self.action)
-        # 自分と相手の1ターン更新
-        for _ in range(2):
+        for _ in range(1): # 変更箇所 ここでは1回だけ提案を進める
             self.state = self.session.step().asdict()
             # 状態を更新
             self.observation = self.observer(self.state)
+            # 変更箇所
             if self.state['agreement'] is not None:  # 合意していたら
-                return self.observation, self.get_reward(), True, False, {"state":{"step":self.state['step'],"agreement":self.state["agreement"],"my_util":self.get_reward(),"opp_util":self.opp_util(tuple(v for _, v in self.state['agreement'].items())),"last_neg":self.state['last_negotiator']}}
+                return self.observation, self.get_reward(), True, False, {"state":{"step":self.state['step'],"agreement":self.state["agreement"],"my_util":self.get_reward(),"opp_util1":self.opp_util1(tuple(v for _, v in self.state['agreement'].items())),"opp_util2":self.opp_util2(tuple(v for _, v in self.state['agreement'].items())),"last_neg":self.state['last_negotiator']}}
             if self.state['timedout'] or self.state['broken']:
                 return self.observation, self.get_reward(), True, False, {"state":[]}
         return self.observation, self.get_reward(), False, False, {"state":[]}
